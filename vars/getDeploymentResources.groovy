@@ -12,6 +12,7 @@ def call(body) {
     def flow = new Fabric8Commands()
     def utils = new Utils()
 
+    def replicas = config.replicas ?: '1'
     def expose = config.exposeApp ?: 'true'
     def requestCPU = config.resourceRequestCPU ?: '0'
     def requestMemory = config.resourceRequestMemory ?: '0'
@@ -74,7 +75,7 @@ def deployment = """
       group: quickstart
     name: ${env.JOB_NAME}
   spec:
-    replicas: 1
+    replicas: ${replicas}
     selector:
       matchLabels:
         provider: fabric8
@@ -88,6 +89,8 @@ def deployment = """
           version: ${config.version}
           group: quickstart
       spec:
+        imagePullSecrets:
+          - name: docker-registry
         containers:
         - env:
           - name: KUBERNETES_NAMESPACE
@@ -137,7 +140,7 @@ def deploymentConfig = """
       group: quickstart
     name: ${env.JOB_NAME}
   spec:
-    replicas: 1
+    replicas: ${replicas}
     selector:
       provider: fabric8
       project: ${env.JOB_NAME}
@@ -150,6 +153,8 @@ def deploymentConfig = """
           version: ${config.version}
           group: quickstart
       spec:
+        imagePullSecrets:
+          - name: docker-registry
         containers:
         - env:
           - name: KUBERNETES_NAMESPACE
