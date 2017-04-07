@@ -20,7 +20,13 @@ import io.fabric8.Fabric8Commands
 @NonCPS
 def environmentNamespace(environment) {
   KubernetesClient kubernetes = new DefaultKubernetesClient()
-  return kubernetes.getNamespace() + "-${environment}"
+  
+  def ns = getNamespace()
+  if (ns.endsWith("-jenkins")){
+    ns = ns.substring(0, ns.lastIndexOf("-jenkins"))
+  }
+
+  return ns + "-${environment}"
 }
 
 @NonCPS
@@ -92,12 +98,24 @@ def addAnnotationToBuild(buildName, annotation, value) {
   def flow = new Fabric8Commands()
   if (flow.isOpenShift()) {
     echo "Adding annotation '${annotation}: ${value}' to Build ${buildName}"
-    OpenShiftClient oClient = new DefaultOpenShiftClient();
-    oClient.builds().withName(buildName).edit().editMetadata().addToAnnotations(annotation, value).endMetadata().done()
+    OpenShiftClient oClient = new DefaultOpenShiftClient()
+    def usersNamespace = getUsersNamespace()
+    echo "looking for ${buildName} in namespace ${usersNamespace}"
+    oClient.builds().inNamespace(usersNamespace).withName(buildName).edit().editMetadata().addToAnnotations(annotation, value).endMetadata().done()
   } else {
     echo "Not running on openshift so skip adding annotation ${annotation}: value"
   }
 }
+
+@NonCPS
+def getUsersNamespace(){
+    def usersNamespace = getNamespace()
+    if (usersNamespace.endsWith("-jenkins")){
+      usersNamespace = usersNamespace.substring(0, usersNamespace.lastIndexOf("-jenkins"))
+    }
+    return usersNamespace
+}
+
 
 def isCI(){
 
@@ -178,7 +196,8 @@ def isValidBuildName(buildName){
   if (flow.isOpenShift()) {
     echo "Looking for matching Build ${buildName}"
     OpenShiftClient oClient = new DefaultOpenShiftClient();
-    def build = oClient.builds().withName(buildName).get()
+    def usersNamespace = getUsersNamespace()
+    def build = oClient.builds().inNamespace(usersNamespace).withName(buildName).get()
     if (build){
       return true
     }
@@ -190,7 +209,14 @@ def isValidBuildName(buildName){
 
 @NonCPS
 def getValidOpenShiftBuildName(){
-  def buildName = env.JOB_NAME + '-' + env.BUILD_NUMBER
+
+  def jobName = env.JOB_NAME
+  if (jobName.contains('/')){
+    jobName = jobName.substring(0, jobName.lastIndexOf('/'))
+    jobName = jobName.replace('/','.')
+  }
+
+  def buildName = jobName + '-' + env.BUILD_NUMBER
   buildName = buildName.substring(buildName.lastIndexOf("/") + 1).toLowerCase()
   if (isValidBuildName(buildName)){
     return buildName
@@ -199,20 +225,26 @@ def getValidOpenShiftBuildName(){
   }
 }
 
+def replacePackageVersion(packageLocation, pair){
+
+  def property = pair[0]
+  def version = pair[1]
+
+  sh "sed -i -r 's/\"${property}\": \"[0-9][0-9]{0,2}.[0-9][0-9]{0,2}(.[0-9][0-9]{0,2})?(.[0-9][0-9]{0,2})?(-development)?\"/\"${property}\": \"${version}\"/g' ${packageLocation}"
+
+}
+
 def replacePackageVersions(packageLocation, replaceVersions){
   for(int i = 0; i < replaceVersions.size(); i++){
-
-    def pair = replaceVersions[i]
-    def property = pair[0]
-    def version = pair[1]
-
-    sh "sed -i -r 's/\"${property}\": \"[0-9][0-9]{0,2}.[0-9][0-9]{0,2}(.[0-9][0-9]{0,2})?(.[0-9][0-9]{0,2})?(-development)?\"/\"${property}\": \"${version}\"/g' ${packageLocation}"
-        
+    replacePackageVersion(packageLocation, replaceVersions[i])
   }
 }
 
 
-def hasOpenPR(project){
+def getExistingPR(project, pair){
+    def property = pair[0]
+    def version = pair[1]
+
     def flow = new Fabric8Commands()
     def githubToken = flow.getGitHubToken()
     def apiUrl = new URL("https://api.github.com/repos/${project}/pulls")
@@ -226,12 +258,14 @@ def hasOpenPR(project){
     }
     for(int i = 0; i < rs.size(); i++){
       def pr = rs[i]
-      
-      if (pr.state == 'open' && pr.title == 'fix(version): update property versions'){
-          return true
+
+      if (pr.state == 'open' && pr.title.contains("fix(version): update ${property}")){
+        if (!pr.title.contains("fix(version): update ${property} to ${version}")){
+          return pr.number
+        }
       }
     }
 
-    return false
+    return null
 }
 return this

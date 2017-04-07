@@ -3,7 +3,7 @@ import io.fabric8.Fabric8Commands
 def call(Map parameters = [:], body) {
     def flow = new Fabric8Commands()
 
-    def defaultLabel = "clients.${env.JOB_NAME}.${env.BUILD_NUMBER}".replace('-', '_').replace('/', '_')
+    def defaultLabel = buildId('clients')
     def label = parameters.get('label', defaultLabel)
 
     def clientsImage = parameters.get('clientsImage', 'fabric8/builder-clients:0.6')
@@ -20,6 +20,7 @@ def call(Map parameters = [:], body) {
                          envVars: [[key: 'TERM', value: 'dumb'],[key: 'KUBECONFIG', value: '/root/home/.oc/cd.conf']]]
                 ],
                 volumes: [
+                        secretVolume(secretName: 'jenkins-hub-api-token', mountPath: '/home/jenkins/.apitoken'),
                         secretVolume(secretName: openshiftConfigSecretName, mountPath: '/root/home/.oc')
                 ]) {
             body()
@@ -31,6 +32,7 @@ def call(Map parameters = [:], body) {
                          envVars: [[key: 'TERM', value: 'dumb'],[key: 'KUBECONFIG', value: '/root/home/.oc/cd.conf']]]
                 ],
                 volumes: [
+                        secretVolume(secretName: 'jenkins-hub-api-token', mountPath: '/home/jenkins/.apitoken'),
                         secretVolume(secretName: openshiftConfigSecretName, mountPath: '/root/home/.oc')
                 ]) {
             body()

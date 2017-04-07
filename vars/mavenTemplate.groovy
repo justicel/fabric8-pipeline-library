@@ -4,7 +4,7 @@ import io.fabric8.Fabric8Commands
 def call(Map parameters = [:], body) {
     def flow = new Fabric8Commands()
 
-    def defaultLabel = "maven.${env.JOB_NAME}.${env.BUILD_NUMBER}".replace('-', '_').replace('/', '_')
+    def defaultLabel = buildId('maven')
     def label = parameters.get('label', defaultLabel)
 
     def mavenImage = parameters.get('mavenImage', 'fabric8/maven-builder:2.2.297')
@@ -14,12 +14,19 @@ def call(Map parameters = [:], body) {
     def cloud = flow.getCloudConfig()
 
     if (flow.isOpenShift()) {
-        podTemplate(cloud: cloud, label: label, inheritFrom: "${inheritFrom}", serviceAccount: 'jenkins',
+        podTemplate(cloud: cloud, label: label, inheritFrom: "${inheritFrom}", serviceAccount: 'jenkins', restartPolicy: 'OnFailure',
                 containers: [
-                        [name: 'jnlp', image: "${jnlpImage}", args: '${computer.jnlpmac} ${computer.name}', workingDir: '/home/jenkins/'],
+                        [name: 'jnlp', image: "${jnlpImage}", args: '${computer.jnlpmac} ${computer.name}', workingDir: '/home/jenkins/',
+                        resourceLimitMemory: '512Mi'], // needs to be high to work on OSO
                         [name: 'maven', image: "${mavenImage}", command: '/bin/sh -c', args: 'cat', ttyEnabled: true, workingDir: '/home/jenkins/',
                          envVars: [
-                                 [key: 'MAVEN_OPTS', value: '-Duser.home=/root/']]]],
+                                 [key: 'MAVEN_OPTS', value: '-Duser.home=/root/ -XX:+UseParallelGC \
+         -XX:MinHeapFreeRatio=20 \
+         -XX:MaxHeapFreeRatio=40 \
+         -XX:GCTimeRatio=4 \
+         -XX:AdaptiveSizePolicyWeight=90 \
+         -Xms512m -Xmx512m']],
+                         resourceLimitMemory: '1Gi']],
                 volumes: [secretVolume(secretName: 'jenkins-maven-settings', mountPath: '/root/.m2'),
                           persistentVolumeClaim(claimName: 'jenkins-mvn-local-repo', mountPath: '/root/.mvnrepository'),
                           secretVolume(secretName: 'jenkins-release-gpg', mountPath: '/home/jenkins/.gnupg'),
