@@ -30,6 +30,8 @@ def call(body) {
 
                 echo("executing sonar scanner ")
 
+                sh "ls -lR ${srcDirectory}"
+
                 sh "java -jar ${localScanner}  -Dsonar.host.url=http://${serviceName}:${port}  -Dsonar.projectKey=${env.JOB_NAME} -Dsonar.sources=${srcDirectory} -Dsonar.java.binaries=${srcDirectory}/**/target/classes"
             }
 
